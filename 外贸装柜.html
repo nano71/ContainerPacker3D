@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Three.js 容器装柜示例（开源）</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial
+        }
+
+        #app {
+            display: flex;
+            height: 100%
+        }
+
+        #viewer {
+            width: calc(100vw - 370px);
+            display: block
+        }
+
+        #panel {
+            width: 370px;
+            box-sizing: border-box;
+            padding: 12px;
+            background: #f6f7fb;
+            border-left: 1px solid #e0e4ef;
+            overflow: auto
+        }
+
+        label {
+            display: block;
+            margin-top: 8px;
+            font-size: 13px
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            font-family: monospace
+        }
+
+        button {
+            margin-top: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #cbd6ee;
+            background: #2b6ef6;
+            color: #fff;
+            cursor: pointer
+        }
+
+        .muted {
+            color: #666;
+            font-size: 13px
+        }
+
+        .status {
+            margin-top: 8px;
+            padding: 8px;
+            background: #fff;
+            border-radius: 6px;
+            border: 1px solid #e6e9f7
+        }
+    </style>
+    <script type="importmap">
+        {
+          "imports": {
+            "three": "./three.module.js",
+            "OrbitControls": "./OrbitControls.js"
+          }
+        }
+    </script>
+</head>
+<body>
+<div id="app">
+    <canvas id="viewer"></canvas>
+    <div id="panel">
+        <h3>Three.js 装柜演示（示例）</h3>
+        <p class="muted">默认容器：40HQ (长 1200cm × 宽 235cm × 高 269cm)。单位：厘米 (cm)。</p>
+
+        <label>箱子列表（JSON 数组，字段：l,w,h,count）</label>
+        <textarea id="boxesJson">[
+  {"l":120, "w":80, "h":60, "count":10},
+  {"l":60, "w":40, "h":40, "count":24},
+  {"l":100, "w":50, "h":50, "count":8},
+  {"l":200, "w":120, "h":150, "count":2}
+]</textarea>
+
+        <label>容器尺寸（L × W × H，cm）</label>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+            <input id="contL" type="number" value="1200" style="width:100%"/>
+            <input id="contW" type="number" value="235" style="width:100%"/>
+            <input id="contH" type="number" value="269" style="width:100%"/>
+        </div>
+
+        <button id="btnPack">开始装柜（Greedy）</button>
+        <button id="toggleTransparent">关闭透明</button>
+        <button id="btnReset" style="background:#6b7280">重置场景</button>
+        <button id="btnExport" style="background:#10b981">导出摆放结果（JSON）</button>
+        <div class="status" id="status">准备就绪。可编辑箱子 JSON 后点击“开始装柜”。</div>
+
+        <h4>说明</h4>
+        <ul style="padding-left:18px">
+            <li>算法：简单贪心扫描（按体积排序），在连续网格位置尝试放置，支持旋转（6 种轴对齐方向）。适合作为入门/演示。</li>
+            <li>适用于：数量不多（几十到几百箱）的场景。对大量箱子/复杂约束，请替换更专业的 3D bin-packing 算法模块。</li>
+        </ul>
+    </div>
+</div>
+
+<script type="module" src="./main.js"></script>
+
+</body>
+</html>
