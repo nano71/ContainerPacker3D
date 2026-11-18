@@ -93,92 +93,55 @@ function render() {
 
 requestAnimationFrame(render);
 
-// 布局算法（贪心扫描）
-function generateInstances(boxSpecs) {
-    const arr = [];
-    for (const s of boxSpecs) {
-        const n = s.count || 1;
-        for (let i = 0; i < n; i++) arr.push({l: s.l, w: s.w, h: s.h});
-    }
-    return arr;
-}
-
-function orientations(box) {
-    const {l, w, h} = box;
-    return [
-        {l: w, w: l, h: h},
-        {l: l, w: w, h: h},
-        {l: h, w: w, h: l},
-        {l: w, w: h, h: l},
-        {l: h, w: l, h: w},
-        {l: l, w: h, h: w}
-    ];
-}
-
-function collides(a, b) {
-    // a and b have x,y,z,l,w,h
-    return !(a.x + a.l <= b.x || b.x + b.l <= a.x ||
-        a.y + a.h <= b.y || b.y + b.h <= a.y ||
-        a.z + a.w <= b.z || b.z + b.w <= a.z);
-}
-
-function packGreedy(boxSpecs, container) {
-    const instances = generateInstances(boxSpecs);
-    // sort by volume descending
-    instances.sort((A, B) => (B.l * B.w * B.h) - (A.l * A.w * A.h));
-    const placed = [];
-    const freeStep = 1; // cm step for scanning
-    const maxX = container.L, maxY = container.H, maxZ = container.W;
-
-    for (const box of instances) {
-        let placedFlag = false;
-        const orients = orientations(box);
-        // scan z,y,x grid
-        for (let z = 0; z <= maxZ - 1; z += freeStep) {
-            if (placedFlag) break;
-            for (let y = 0; y <= maxY - 1; y += freeStep) {
-                if (placedFlag) break;
-                for (let x = 0; x <= maxX - 1; x += freeStep) {
-                    if (placedFlag) break;
-                    for (const o of orients) {
-                        if (x + o.l <= maxX + 1e-6 && y + o.h <= maxY + 1e-6 && z + o.w <= maxZ + 1e-6) {
-                            const cand = {x, y, y0: y, z, l: o.l, w: o.w, h: o.h};
-                            // check collisions with placed
-                            let ok = true;
-                            for (const p of placed) {
-                                if (collides(cand, p)) {
-                                    ok = false;
-                                    break;
-                                }
-                            }
-                            if (ok) {
-                                // place
-                                placed.push({x, y, z, l: o.l, w: o.w, h: o.h});
-                                placedFlag = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (!placedFlag) {
-            console.warn('无法放下一个箱子：', box);
-        }
-    }
-    return placed;
-}
-
 // UI handlers
 const btnPack = document.getElementById('btnPack');
 const btnReset = document.getElementById('btnReset');
 const btnExport = document.getElementById('btnExport');
 const status = document.getElementById('status');
+let packingWorker;
+let nextPackingJobId = 0;
+let activePackingJobId = null;
 
 function hexByIndex(i) {
     const palette = [0x3b82f6, 0x10b981, 0xf97316, 0xe11d48, 0xa78bfa, 0x06b6d4, 0xf43f5e, 0xf59e0b];
     return palette[i % palette.length];
 }
+
+function createPackingWorker() {
+    packingWorker = new Worker(new URL('./packing-worker.js', import.meta.url));
+
+    packingWorker.onmessage = ({data}) => {
+        // 忽略已被后续请求取代的计算结果。
+        if (data.jobId !== activePackingJobId) return;
+
+        activePackingJobId = null;
+        btnPack.disabled = false;
+
+        if (data.type === 'error') {
+            status.textContent = '计算错误：' + data.message;
+            return;
+        }
+
+        const {placed, unplacedCount, totalBoxVolume, usedVolume, container} = data;
+        placed.forEach((box, index) => {
+            addBoxVisual(box.x, box.y, box.z, box.l, box.w, box.h, hexByIndex(index));
+        });
+
+        const containerVolume = container.L * container.W * container.H;
+        const unplacedText = unplacedCount ? `；未放下 ${unplacedCount} 件` : '';
+        status.innerHTML = `放置完成：放下 ${placed.length} 件${unplacedText}，总箱体积 ${totalBoxVolume.toLocaleString()} cm³；容器体积 ${containerVolume.toLocaleString()} cm³；已用体积 ${usedVolume.toLocaleString()} cm³；体积利用率 ${(usedVolume / containerVolume * 100).toFixed(2)}%`;
+        controls.target.set(container.L / 2, container.H / 2, container.W / 2);
+        controls.update();
+    };
+
+    packingWorker.onerror = (event) => {
+        activePackingJobId = null;
+        btnPack.disabled = false;
+        status.textContent = '计算 Worker 异常：' + event.message;
+    };
+}
+
+createPackingWorker();
 
 btnPack.addEventListener('click', () => {
     try {
@@ -187,29 +150,19 @@ btnPack.addEventListener('click', () => {
         const W = parseFloat(document.getElementById('contW').value);
         const H = parseFloat(document.getElementById('contH').value);
         if (!Array.isArray(boxes)) throw new Error('boxes must be array');
+        if (![L, W, H].every(Number.isFinite) || L <= 0 || W <= 0 || H <= 0) {
+            throw new Error('容器尺寸必须为正数');
+        }
         makeContainer(L, W, H);
         clearPlaced();
-        status.textContent = '计算中... 请稍候（算法为贪心网格扫描，可能较慢，取决于箱子数量）。';
-
-        // pack
-        setTimeout(() => {
-            const placed = packGreedy(boxes, {L, W, H});
-            // visualize
-            placed.forEach((p, i) => {
-                addBoxVisual(p.x, p.y, p.z, p.l, p.w, p.h, hexByIndex(i));
-            });
-            // compute stats
-            let volBox = 0;
-            for (const s of boxes) {
-                volBox += (s.l * s.w * s.h) * (s.count || 1);
-            }
-            const contVol = L * W * H;
-            const usedVol = placed.reduce((s, p) => s + p.l * p.w * p.h, 0);
-            status.innerHTML = `放置完成：放下 ${placed.length} 件，总箱体积 ${(volBox).toLocaleString()} cm³；容器体积 ${contVol.toLocaleString()} cm³；已用体积 ${usedVol.toLocaleString()} cm³；体积利用率 ${(usedVol / contVol * 100).toFixed(2)}%`;
-            // focus camera
-            controls.target.set(L / 2, H / 2, W / 2);
-            controls.update();
-        }, 50);
+        status.textContent = '计算中... 计算在后台 Worker 运行，可继续操作视图。';
+        btnPack.disabled = true;
+        activePackingJobId = ++nextPackingJobId;
+        packingWorker.postMessage({
+            jobId: activePackingJobId,
+            boxes,
+            container: {L, W, H}
+        });
 
     } catch (e) {
         status.textContent = '错误：' + e.message;
@@ -217,6 +170,11 @@ btnPack.addEventListener('click', () => {
 });
 
 btnReset.addEventListener('click', () => {
+    // 中止当前扫描，避免旧任务占用 Worker 队列或覆盖重置后的场景。
+    packingWorker.terminate();
+    createPackingWorker();
+    activePackingJobId = null;
+    btnPack.disabled = false;
     scene.children.filter(c => c !== grid && c !== hemi && c !== dir).forEach(c => scene.remove(c));
     // rebuild lights and grid
     clearPlaced();
