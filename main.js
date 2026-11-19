@@ -108,7 +108,7 @@ function hexByIndex(i) {
 }
 
 function createPackingWorker() {
-    packingWorker = new Worker(new URL('./packing-worker.js', import.meta.url));
+    packingWorker = new Worker(new URL('./packingWorker.js', import.meta.url));
 
     packingWorker.onmessage = ({data}) => {
         // 忽略已被后续请求取代的计算结果。
@@ -190,7 +190,14 @@ btnExport.addEventListener('click', () => {
         if (child.isMesh && child.geometry && child.geometry.parameters) {
             const p = child.position;
             const params = child.geometry.parameters;
-            out.push({x: p.x - params.width / 2, y: p.y - params.height / 2, z: p.z - params.depth / 2, l: params.width, h: params.height, w: params.depth});
+            out.push({
+                x: p.x - params.width / 2,
+                y: p.y - params.height / 2,
+                z: p.z - params.depth / 2,
+                l: params.width,
+                h: params.height,
+                w: params.depth
+            });
         }
     });
 
